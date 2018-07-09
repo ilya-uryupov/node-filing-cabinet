@@ -41,25 +41,43 @@ module.exports = function cabinet(options) {
   var configPath = options.configPath;
   var ast = options.ast;
 
-  var ext = path.extname(filename);
+  // TODO: Add tests for this option
+  const fileExtension = path.extname(filename);
+  var extensions = options.extensions ? [...new Set([...options.extensions, fileExtension])]
+                                      : [fileExtension];
 
-  var resolver = defaultLookups[ext];
+  var resolvers = Object.keys(defaultLookups)
+                        .filter(resolverExt => extensions.includes(resolverExt))
+                        .map(resolverExt => ({name: resolverExt, resolver: defaultLookups[resolverExt]}));
 
-  if (!resolver) {
+  if (resolvers.length === 0) {
     debug('using generic resolver');
     if (!resolveDependencyPath) {
       resolveDependencyPath = require('resolve-dependency-path');
     }
 
-    resolver = resolveDependencyPath;
+    resolvers = [{name: 'generic', resolver: resolveDependencyPath}];
   }
 
-  debug('found a resolver for ' + ext);
+  debug(`found ${resolvers.length} resolvers for `, extensions);
 
   // TODO: Change all resolvers to accept an options argument
-  var result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
+  var result;
 
-  debug('resolved path for ' + partial + ': ' + result);
+  for (let resolverObj of resolvers) {
+    const {name, resolver} = resolverObj;
+
+    result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
+
+    if (result) {
+      debug(`resolved path for ${partial} by ${name} resolver:`, result);
+      break;
+    } else {
+      debug(`empty resolved path for ${partial} by ${name} resolver:`, result);
+    }
+  }
+
+  debug(`final resolved path for ${partial} :`, result);
   return result;
 };
 

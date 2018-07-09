@@ -32,6 +32,8 @@ var defaultLookups = {
 };
 
 module.exports = function cabinet(options) {
+  debug('options', options)
+
   var partial = options.partial;
   var filename = options.filename;
   var directory = options.directory;

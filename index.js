@@ -34,6 +34,8 @@ const defaultLookups = {
 };
 
 module.exports = function cabinet(options) {
+  debug('options', options);
+
   const {
     partial,
     filename,
@@ -44,24 +46,44 @@ module.exports = function cabinet(options) {
     configPath,
     ast
   } = options;
-  const ext = path.extname(filename);
-  let resolver = defaultLookups[ext];
 
-  if (!resolver) {
+  // TODO: Add tests for this option
+  const fileExtension = path.extname(filename);
+  const extensions = options.extensions ? [...new Set([...options.extensions, fileExtension])]
+                                        : [fileExtension];
+
+  let resolvers = Object.keys(defaultLookups)
+                        .filter(resolverExt => extensions.includes(resolverExt))
+                        .map(resolverExt => ({name: resolverExt, resolver: defaultLookups[resolverExt]}));
+
+  if (resolvers.length === 0) {
     debug('using generic resolver');
     if (!resolveDependencyPath) {
       resolveDependencyPath = require('resolve-dependency-path');
     }
 
-    resolver = resolveDependencyPath;
+    resolvers = [{name: 'generic', resolver: resolveDependencyPath}];
   }
 
-  debug(`found a resolver for ${ext}`);
+  debug(`found ${resolvers.length} resolvers for `, extensions);
 
   // TODO: Change all resolvers to accept an options argument
-  const result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
+  let result;
 
-  debug(`resolved path for ${partial}: ${result}`);
+  for (let resolverObj of resolvers) {
+    const {name, resolver} = resolverObj;
+
+    result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
+
+    if (result) {
+      debug(`resolved path for ${partial} by ${name} resolver:`, result);
+      break;
+    } else {
+      debug(`empty resolved path for ${partial} by ${name} resolver:`, result);
+    }
+  }
+
+  debug(`final resolved path for ${partial} :`, result);
   return result;
 };
 

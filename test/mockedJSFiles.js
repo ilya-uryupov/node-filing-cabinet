@@ -11,7 +11,9 @@ module.exports = {
     },
     'ts': {
       'index.ts': 'import foo from "./foo";',
-      'foo.ts': 'export default 1;'
+      'index2.tsx': 'import bar from "./bar";',
+      'foo.ts': 'export default 1;',
+      'bar.tsx': 'import React from "react"; export default () => { return (<div></div>); }'
     },
     'amd': {
       'foo.js': 'define(["./bar"], function(bar){ return bar; });',

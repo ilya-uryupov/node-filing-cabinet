@@ -42,6 +42,7 @@ describe('filing-cabinet', function() {
         '.js',
         '.jsx',
         '.ts',
+        '.tsx',
         '.scss',
         '.sass',
         '.styl',
@@ -374,6 +375,22 @@ describe('filing-cabinet', function() {
         );
       });
 
+      it('resolves a TSX import', function() {
+        const directory = 'js/ts';
+        const filename = directory + '/index2.tsx';
+
+        const result = cabinet({
+          partial: './bar',
+          filename,
+          directory
+        });
+
+        assertPathsEqual(
+          result,
+          path.join(path.resolve(directory), 'bar.tsx')
+        );
+      });
+
       describe('when a partial does not exist', function() {
         it('returns an empty result', function() {
           const directory = 'js/ts';
@@ -664,6 +681,10 @@ describe('filing-cabinet', function() {
 
     it('resolves files with a .jsx extension', function() {
       testResolution('./test/foo.jsx', `${directory}/test/foo.jsx`);
+    });
+
+    it('resolves files with a .tsx extension', function() {
+      testResolution('./test/bar.tsx', `${directory}/test/bar.tsx`);
     });
 
     describe('when the partial contains a loader', function() {

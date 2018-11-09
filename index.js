@@ -26,6 +26,7 @@ const defaultLookups = {
   '.js': jsLookup,
   '.jsx': jsLookup,
   '.ts': tsLookup,
+  '.tsx': tsLookup,
   '.scss': sassLookup,
   '.sass': sassLookup,
   '.styl': stylusLookup,
@@ -73,13 +74,17 @@ module.exports = function cabinet(options) {
   for (let resolverObj of resolvers) {
     const {name, resolver} = resolverObj;
 
-    result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
+    try {
+      result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
 
-    if (result) {
-      debug(`resolved path for ${partial} by ${name} resolver:`, result);
-      break;
-    } else {
-      debug(`empty resolved path for ${partial} by ${name} resolver:`, result);
+      if (result) {
+        debug(`resolved path for ${partial} by ${name} resolver:`, result);
+        break;
+      } else {
+        debug(`empty resolved path for ${partial} by ${name} resolver:`, result);
+      }
+    } catch (e) {
+      debug(`failed to resolve path for ${partial} by ${name} resolver`);
     }
   }
 

@@ -6,14 +6,20 @@ const rewire = require('rewire');
 const mock = require('mock-fs');
 const path = require('path');
 
-const cabinet = rewire('../');
-//manually add dynamic imports to rewired app
-cabinet.__set__('resolveDependencyPath', require('resolve-dependency-path'));
-cabinet.__set__('resolve', require('resolve'));
-cabinet.__set__('getModuleType', require('module-definition'));
-cabinet.__set__('ts', require('typescript'));
-cabinet.__set__('amdLookup', require('module-lookup-amd'));
-cabinet.__set__('webpackResolve', require('enhanced-resolve'));
+let cabinet = setupCabinet();
+
+function setupCabinet() {
+  const freshCabinet = rewire('../');
+  //manually add dynamic imports to rewired app
+  freshCabinet.__set__('resolveDependencyPath', require('resolve-dependency-path'));
+  freshCabinet.__set__('resolve', require('resolve'));
+  freshCabinet.__set__('getModuleType', require('module-definition'));
+  freshCabinet.__set__('ts', require('typescript'));
+  freshCabinet.__set__('amdLookup', require('module-lookup-amd'));
+  freshCabinet.__set__('webpackResolve', require('enhanced-resolve'));
+  freshCabinet.__set__('noTsCache', false);
+  return freshCabinet;
+}
 
 const mockedFiles = require('./mockedJSFiles');
 const mockAST = require('./ast');
@@ -30,6 +36,7 @@ const assertPathsEqual = (path1, path2) => {
 describe('filing-cabinet', function() {
   describe('JavaScript', function() {
     beforeEach(function() {
+      cabinet = setupCabinet();
       mock(mockedFiles);
     });
 
@@ -38,7 +45,7 @@ describe('filing-cabinet', function() {
     });
 
     it('dangles off its supported file extensions', function() {
-      assert.deepEqual(cabinet.supportedFileExtensions, [
+      const expectedExtensions = [
         '.js',
         '.jsx',
         '.ts',
@@ -47,7 +54,10 @@ describe('filing-cabinet', function() {
         '.sass',
         '.styl',
         '.less'
-      ]);
+      ];
+
+      assert.ok(cabinet.supportedFileExtensions.every(ext => expectedExtensions.includes(ext)) &&
+                expectedExtensions.every(ext => cabinet.supportedFileExtensions.includes(ext)));
     });
 
     it('uses a generic resolve for unsupported file extensions', function() {
@@ -305,6 +315,31 @@ describe('filing-cabinet', function() {
             '..',
             'node_modules',
             'module.entry',
+            'index.module.js'
+          )
+        );
+      });
+
+      it('resolves a node module with another module entry in package.json', function() {
+        const directory = 'js/commonjs/';
+        const filename = directory + 'module.entry-2.js';
+
+        const result = cabinet({
+          partial: 'module.entry-another',
+          filename: filename,
+          directory: directory,
+          nodeModulesConfig: {
+            entry: 'module'
+          }
+        });
+
+        assertPathsEqual(
+          result,
+          path.join(
+            path.resolve(directory),
+            '..',
+            'node_modules',
+            'module.entry-another',
             'index.module.js'
           )
         );

@@ -22,17 +22,16 @@ const appModulePath = require('app-module-path');
 let webpackResolve;
 const isRelative = require('is-relative-path');
 
-const defaultLookups = {
-  '.js': jsLookup,
-  '.jsx': jsLookup,
-  '.ts': tsLookup,
-  '.tsx': tsLookup,
-  '.scss': sassLookup,
-  '.sass': sassLookup,
-  '.styl': stylusLookup,
+// For testing only
+let noTsCache = false;
+
+const defaultLookups = [
+  {name: 'TS', keys: ['.ts', '.tsx', '.js', '.jsx'], resolver: tsLookup},
+  {name: 'JS', keys: ['.js', '.jsx'], resolver: jsLookup},
   // Less and Sass imports are very similar
-  '.less': sassLookup
-};
+  {name: 'SASS', keys: ['.scss', '.sass', '.less'], resolver: sassLookup},
+  {name: 'Stylus', keys: ['.styl'], resolver: stylusLookup}
+];
 
 module.exports = function cabinet(options) {
   debug('options', options);
@@ -53,9 +52,7 @@ module.exports = function cabinet(options) {
   const extensions = options.extensions ? [...new Set([...options.extensions, fileExtension])]
                                         : [fileExtension];
 
-  let resolvers = Object.keys(defaultLookups)
-                        .filter(resolverExt => extensions.includes(resolverExt))
-                        .map(resolverExt => ({name: resolverExt, resolver: defaultLookups[resolverExt]}));
+  let resolvers = defaultLookups.filter(({keys}) => keys.some(k => extensions.includes(k)));
 
   if (resolvers.length === 0) {
     debug('using generic resolver');
@@ -63,7 +60,7 @@ module.exports = function cabinet(options) {
       resolveDependencyPath = require('resolve-dependency-path');
     }
 
-    resolvers = [{name: 'generic', resolver: resolveDependencyPath}];
+    resolvers = [{name: 'generic', keys: extensions, resolver: resolveDependencyPath}];
   }
 
   debug(`found ${resolvers.length} resolvers for `, extensions);
@@ -89,10 +86,11 @@ module.exports = function cabinet(options) {
   }
 
   debug(`final resolved path for ${partial} :`, result);
-  return result;
+  return result || '';
 };
 
-module.exports.supportedFileExtensions = Object.keys(defaultLookups);
+module.exports.supportedFileExtensions = defaultLookups.map(lookup => lookup.keys)
+                                                       .reduce((result, current) => [...result, ...current], []);
 
 /**
  * Register a custom lookup resolver for a file extension
@@ -101,7 +99,7 @@ module.exports.supportedFileExtensions = Object.keys(defaultLookups);
  * @param  {Function} lookupStrategy - A resolver of partial paths
  */
 module.exports.register = function(extension, lookupStrategy) {
-  defaultLookups[extension] = lookupStrategy;
+  defaultLookups.unshift({name: 'custom', keys: [extension], resolver: lookupStrategy});
 
   if (!this.supportedFileExtensions.includes(extension)) {
     this.supportedFileExtensions.push(extension);
@@ -191,7 +189,23 @@ function jsLookup(partial, filename, directory, config, webpackConfig, configPat
   }
 }
 
-function tsLookup(partial, filename) {
+let tsHost;
+let tsCacheDirectory;
+let tsCache;
+
+function getTsHost(directory) {
+  if (noTsCache || !tsHost || directory !== tsCacheDirectory) {
+    tsHost = ts.createCompilerHost({});
+    tsCache = ts.createModuleResolutionCache(directory, x => tsHost.getCanonicalFileName(x));
+    tsCacheDirectory = directory;
+
+    debug('TS host and cache created for directory ', directory);
+  }
+
+  return tsHost;
+}
+
+function tsLookup(partial, filename, directory) {
   debug('performing a typescript lookup');
 
   if (!ts) {
@@ -202,9 +216,9 @@ function tsLookup(partial, filename) {
     module: ts.ModuleKind.AMD
   };
 
-  const host = ts.createCompilerHost({});
+  const host = getTsHost(directory);
   debug('with options: ', options);
-  const resolvedModule = ts.resolveModuleName(partial, filename, options, host).resolvedModule;
+  const resolvedModule = ts.resolveModuleName(partial, filename, options, host, tsCache).resolvedModule;
   debug('ts resolved module: ', resolvedModule);
   const result = resolvedModule ? resolvedModule.resolvedFileName : '';
 

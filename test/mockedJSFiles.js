@@ -25,6 +25,7 @@ module.exports = {
       'foo.baz': 'module.exports = "yo";',
       'index.js': '',
       'module.entry.js': 'import * as module from "module.entry"',
+      'module.entry-2.js': 'import * as module from "module.entry-another"',
       'subdir': {
         'module.js': 'var entry = require("../");',
         'index.js': ''
@@ -38,6 +39,11 @@ module.exports = {
         'index.js': 'module.exports = function() {};'
       },
       'module.entry': {
+        'index.main.js': 'module.exports = function() {};',
+        'index.module.js': 'module.exports = function() {};',
+        'package.json': '{ "main": "index.main.js", "module": "index.module.js" }'
+      },
+      'module.entry-another': {
         'index.main.js': 'module.exports = function() {};',
         'index.module.js': 'module.exports = function() {};',
         'package.json': '{ "main": "index.main.js", "module": "index.module.js" }'

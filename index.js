@@ -79,7 +79,8 @@ module.exports = function cabinet(options) {
     const {name, resolver} = resolverObj;
 
     try {
-      result = resolver(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast);
+      options.dependency = partial;
+      result = resolver(options);
 
       if (result) {
         debug(`resolved path for ${partial} by ${name} resolver:`, result);
@@ -213,7 +214,7 @@ function getTsHost(directory) {
   return tsHost;
 }
 
-function tsLookup(partial, filename, directory) {
+function tsLookup({dependency, filename, directory, tsConfig}) {
   debug('performing a typescript lookup');
 
   const defaultTsConfig = {

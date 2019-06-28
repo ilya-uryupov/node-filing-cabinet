@@ -415,7 +415,7 @@ describe('filing-cabinet', function() {
 
         assertPathsEqual(
           result,
-          expected
+          path.resolve(directory, 'subdir/index.js')
         );
       });
 

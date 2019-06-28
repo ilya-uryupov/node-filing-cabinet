@@ -2,6 +2,7 @@
 
 const path = require('path');
 const debug = require('debug')('cabinet');
+const fs = require('fs');
 
 /*
  * most js resolver are lazy-loaded (only required when needed)
@@ -33,18 +34,24 @@ const defaultLookups = [
   {name: 'Stylus', keys: ['.styl'], resolver: stylusLookup}
 ];
 
+/**
+ * @param {Object} options
+ * @param {String} options.partial The dependency being looked up
+ * @param {String} options.filename The file that contains the dependency being looked up
+ * @param {String|Object} [options.config] Path to a requirejs config
+ * @param {String} [options.configPath] For AMD resolution, if the config is an object, this represents the location of the config file.
+ * @param {Object} [options.nodeModulesConfig] Config for overriding the entry point defined in a package json file
+ * @param {String} [options.nodeModulesConfig.entry] The new value for "main" in package json
+ * @param {String} [options.webpackConfig] Path to the webpack config
+ * @param {Object} [options.ast] A preparsed AST for the file identified by filename.
+ * @param {Object} [options.tsConfig] Path to a typescript config file
+ */
 module.exports = function cabinet(options) {
   debug('options', options);
 
   const {
     partial,
     filename,
-    directory,
-    config,
-    nodeModulesConfig,
-    webpackConfig,
-    configPath,
-    ast
   } = options;
 
   // TODO: Add tests for this option
@@ -140,17 +147,18 @@ module.exports._getJSType = function(options = {}) {
 
 /**
  * @private
- * @param  {String} partial
- * @param  {String} filename
- * @param  {String} directory
- * @param  {String} [config]
- * @param  {String} [webpackConfig]
- * @param  {String} [configPath]
- * @param  {Object} [nodeModulesConfig]
- * @param  {Object} [ast]
+ * @param {Object} options
+ * @param  {String} options.dependency
+ * @param  {String} options.filename
+ * @param  {String} options.directory
+ * @param  {String} [options.config]
+ * @param  {String} [options.webpackConfig]
+ * @param  {String} [options.configPath]
+ * @param  {Object} [options.nodeModulesConfig]
+ * @param  {Object} [options.ast]
  * @return {String}
  */
-function jsLookup(partial, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast) {
+function jsLookup({dependency, filename, directory, config, webpackConfig, configPath, nodeModulesConfig, ast}) {
   const type = module.exports._getJSType({
     config: config,
     webpackConfig: webpackConfig,
@@ -169,23 +177,23 @@ function jsLookup(partial, filename, directory, config, webpackConfig, configPat
         config: config,
         // Optional in case a pre-parsed config is being passed in
         configPath: configPath,
-        partial: partial,
+        partial: dependency,
         directory: directory,
         filename: filename
       });
 
     case 'commonjs':
       debug('using commonjs resolver');
-      return commonJSLookup(partial, filename, directory, nodeModulesConfig);
+      return commonJSLookup({dependency, filename, directory, nodeModulesConfig});
 
     case 'webpack':
       debug('using webpack resolver for es6');
-      return resolveWebpackPath(partial, filename, directory, webpackConfig);
+      return resolveWebpackPath({dependency, filename, directory, webpackConfig});
 
     case 'es6':
     default:
       debug('using commonjs resolver for es6');
-      return commonJSLookup(partial, filename, directory, nodeModulesConfig);
+      return commonJSLookup({dependency, filename, directory, nodeModulesConfig});
   }
 }
 
@@ -208,35 +216,73 @@ function getTsHost(directory) {
 function tsLookup(partial, filename, directory) {
   debug('performing a typescript lookup');
 
+  const defaultTsConfig = {
+    compilerOptions: {}
+  };
+
   if (!ts) {
     ts = require('typescript');
   }
 
-  const options = {
-    module: ts.ModuleKind.AMD
-  };
+  debug('given typescript config: ', tsConfig);
+
+  if (!tsConfig) {
+    tsConfig = defaultTsConfig;
+    debug('no tsconfig given, defaulting');
+
+  } else if (typeof tsConfig === 'string') {
+    debug('string tsconfig given, parsing');
+
+    try {
+      tsConfig = JSON.parse(fs.readFileSync(tsConfig, 'utf8'));
+      debug('successfully parsed tsconfig');
+    } catch (e) {
+      debug('could not parse tsconfig');
+      throw new Error('could not read tsconfig');
+    }
+  }
+
+  debug('processed typescript config: ', tsConfig);
+  debug('processed typescript config type: ', typeof tsConfig);
+
+  const {options} = ts.convertCompilerOptionsFromJson(tsConfig.compilerOptions);
+
+  // Preserve for backcompat. Consider removing this as a breaking change.
+  if (!options.module) {
+    options.module = ts.ModuleKind.AMD;
+  }
 
   const host = getTsHost(directory);
   debug('with options: ', options);
-  const resolvedModule = ts.resolveModuleName(partial, filename, options, host, tsCache).resolvedModule;
-  debug('ts resolved module: ', resolvedModule);
-  const result = resolvedModule ? resolvedModule.resolvedFileName : '';
+
+  const namedModule = ts.resolveModuleName(dependency, filename, options, host, tsCache);
+  let result = '';
+
+  if (namedModule.resolvedModule) {
+    result = namedModule.resolvedModule.resolvedFileName;
+  } else {
+    const suffix = '.d.ts';
+    const lookUpLocations = namedModule.failedLookupLocations
+      .filter((string) => string.endsWith(suffix))
+      .map((string) => string.substr(0, string.length - suffix.length));
+
+    result = lookUpLocations.find(ts.sys.fileExists) || '';
+  }
 
   debug('result: ' + result);
   return result ? path.resolve(result) : '';
 }
 
-/**
- * @private
- * @param  {String} partial
- * @param  {String} filename
- * @param  {String} directory
- * @return {String}
- */
-function commonJSLookup(partial, filename, directory, nodeModulesConfig) {
+function commonJSLookup({dependency, filename, directory, nodeModulesConfig}) {
   if (!resolve) {
     resolve = require('resolve');
   }
+
+  if (!dependency) {
+    debug('blank dependency given. Returning early.');
+    return '';
+  }
+
   // Need to resolve partials within the directory of the module, not filing-cabinet
   const moduleLookupDir = path.join(directory, 'node_modules');
 
@@ -246,8 +292,8 @@ function commonJSLookup(partial, filename, directory, nodeModulesConfig) {
 
   // Make sure the partial is being resolved to the filename's context
   // 3rd party modules will not be relative
-  if (partial[0] === '.') {
-    partial = path.resolve(path.dirname(filename), partial);
+  if (dependency[0] === '.') {
+    dependency = path.resolve(path.dirname(filename), dependency);
   }
 
   let result = '';
@@ -259,7 +305,7 @@ function commonJSLookup(partial, filename, directory, nodeModulesConfig) {
   }
 
   try {
-    result = resolve.sync(partial, {
+    result = resolve.sync(dependency, {
       extensions: ['.js', '.jsx'],
       basedir: directory,
       packageFilter: nodeModulesConfig && nodeModulesConfig.entry ? packageFilter : undefined,
@@ -268,13 +314,13 @@ function commonJSLookup(partial, filename, directory, nodeModulesConfig) {
     });
     debug('resolved path: ' + result);
   } catch (e) {
-    debug('could not resolve ' + partial);
+    debug('could not resolve ' + dependency);
   }
 
   return result;
 }
 
-function resolveWebpackPath(partial, filename, directory, webpackConfig) {
+function resolveWebpackPath({dependency, filename, directory, webpackConfig}) {
   if (!webpackResolve) {
     webpackResolve = require('enhanced-resolve');
   }
@@ -311,25 +357,25 @@ function resolveWebpackPath(partial, filename, directory, webpackConfig) {
   try {
     const resolver = webpackResolve.create.sync(resolveConfig);
 
-    // We don't care about what the loader resolves the partial to
+    // We don't care about what the loader resolves the dependency to
     // we only wnat the path of the resolved file
-    partial = stripLoader(partial);
+    dependency = stripLoader(dependency);
 
-    const lookupPath = isRelative(partial) ? path.dirname(filename) : directory;
+    const lookupPath = isRelative(dependency) ? path.dirname(filename) : directory;
 
-    return resolver(lookupPath, partial);
+    return resolver(lookupPath, dependency);
   } catch (e) {
-    debug('error when resolving ' + partial);
+    debug('error when resolving ' + dependency);
     debug(e.message);
     debug(e.stack);
     return '';
   }
 }
 
-function stripLoader(partial) {
-  const exclamationLocation = partial.indexOf('!');
+function stripLoader(dependency) {
+  const exclamationLocation = dependency.indexOf('!');
 
-  if (exclamationLocation === -1) { return partial; }
+  if (exclamationLocation === -1) { return dependency; }
 
-  return partial.slice(exclamationLocation + 1);
+  return dependency.slice(exclamationLocation + 1);
 }

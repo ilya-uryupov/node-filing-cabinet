@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const process = require('process');
 const debug = require('debug')('cabinet');
 const fs = require('fs');
 
@@ -27,7 +28,7 @@ const isRelative = require('is-relative-path');
 let noTsCache = false;
 
 const defaultLookups = [
-  {name: 'TS', keys: ['.ts', '.tsx', '.js', '.jsx'], resolver: tsLookup},
+  {name: 'TS', keys: ['.js', '.jsx', '.ts', '.tsx'], resolver: tsLookup},
   {name: 'JS', keys: ['.js', '.jsx'], resolver: jsLookup},
   // Less and Sass imports are very similar
   {name: 'SASS', keys: ['.scss', '.sass', '.less'], resolver: sassLookup},
@@ -39,7 +40,8 @@ const defaultLookups = [
  * @param {String} options.partial The dependency being looked up
  * @param {String} options.filename The file that contains the dependency being looked up
  * @param {String|Object} [options.config] Path to a requirejs config
- * @param {String} [options.configPath] For AMD resolution, if the config is an object, this represents the location of the config file.
+ * @param {String} [options.configPath] For AMD resolution, if the config is an object, this represents the location of
+ *   the config file.
  * @param {Object} [options.nodeModulesConfig] Config for overriding the entry point defined in a package json file
  * @param {String} [options.nodeModulesConfig.entry] The new value for "main" in package json
  * @param {String} [options.webpackConfig] Path to the webpack config
@@ -89,7 +91,7 @@ module.exports = function cabinet(options) {
         debug(`empty resolved path for ${partial} by ${name} resolver:`, result);
       }
     } catch (e) {
-      debug(`failed to resolve path for ${partial} by ${name} resolver`);
+      debug(`failed to resolve path for ${partial} by ${name} resolver`, e);
     }
   }
 
@@ -97,8 +99,13 @@ module.exports = function cabinet(options) {
   return result || '';
 };
 
-module.exports.supportedFileExtensions = defaultLookups.map(lookup => lookup.keys)
-                                                       .reduce((result, current) => [...result, ...current], []);
+module.exports.supportedFileExtensions = [...(
+  defaultLookups.map(lookup => lookup.keys)
+                .reduce((result, keys) => {
+                  keys.forEach(k => result.add(k));
+                  return result;
+                }, new Set())
+)];
 
 /**
  * Register a custom lookup resolver for a file extension
@@ -214,48 +221,72 @@ function getTsHost(directory) {
   return tsHost;
 }
 
-function tsLookup({dependency, filename, directory, tsConfig}) {
-  debug('performing a typescript lookup');
+let tsOptionsCache = new Map();
 
-  const defaultTsConfig = {
-    compilerOptions: {}
-  };
-
-  if (!ts) {
-    ts = require('typescript');
+function getCompilerOptionsFromTsConfig(tsConfig) {
+  if (tsOptionsCache.has(tsConfig)) {
+    debug('typescript options cache hit: ', tsConfig);
+    return tsOptionsCache.get(tsConfig);
   }
 
   debug('given typescript config: ', tsConfig);
 
-  if (!tsConfig) {
-    tsConfig = defaultTsConfig;
-    debug('no tsconfig given, defaulting');
+  let tsOptionsJson = {
+    compilerOptions: {}
+  };
 
-  } else if (typeof tsConfig === 'string') {
-    debug('string tsconfig given, parsing');
+  let tsBasePath = process.cwd();
 
-    try {
-      tsConfig = JSON.parse(fs.readFileSync(tsConfig, 'utf8'));
-      debug('successfully parsed tsconfig');
-    } catch (e) {
-      debug('could not parse tsconfig');
-      throw new Error('could not read tsconfig');
+  if (tsConfig) {
+    if (typeof tsConfig === 'string') {
+      debug('string tsconfig given, reading file');
+
+      try {
+        const configText = fs.readFileSync(tsConfig, 'utf8');
+        tsOptionsJson = ts.parseConfigFileTextToJson(tsConfig, configText).config;
+        tsBasePath = path.dirname(tsConfig);
+
+        debug('successfully parsed tsconfig');
+      } catch (e) {
+        debug('could not parse tsconfig', e);
+        throw new Error('could not read tsconfig');
+      }
+    } else if (typeof tsConfig === 'object') {
+      tsOptionsJson = tsConfig;
+    } else {
+      throw new Error(`Unexpected type of tsconfig: ${typeof tsConfig}`);
     }
+  } else {
+    debug('no tsconfig given, defaulting');
   }
 
-  debug('processed typescript config: ', tsConfig);
-  debug('processed typescript config type: ', typeof tsConfig);
+  debug('processed typescript options: ', tsOptionsJson);
+  debug('processed typescript options type: ', typeof tsOptionsJson);
 
-  const {options} = ts.convertCompilerOptionsFromJson(tsConfig.compilerOptions);
+  const {options} = ts.convertCompilerOptionsFromJson(tsOptionsJson.compilerOptions, tsBasePath);
 
   // Preserve for backcompat. Consider removing this as a breaking change.
   if (!options.module) {
     options.module = ts.ModuleKind.AMD;
   }
 
-  const host = getTsHost(directory);
+  tsOptionsCache.set(tsConfig, options);
+
+  return options;
+}
+
+function tsLookup({dependency, filename, directory, tsConfig}) {
+  debug('performing a typescript lookup');
+
+  if (!ts) {
+    ts = require('typescript');
+  }
+
+  const options = getCompilerOptionsFromTsConfig(tsConfig);
+
   debug('with options: ', options);
 
+  const host = getTsHost(directory);
   const namedModule = ts.resolveModuleName(dependency, filename, options, host, tsCache);
   let result = '';
 
@@ -264,8 +295,8 @@ function tsLookup({dependency, filename, directory, tsConfig}) {
   } else {
     const suffix = '.d.ts';
     const lookUpLocations = namedModule.failedLookupLocations
-      .filter((string) => string.endsWith(suffix))
-      .map((string) => string.substr(0, string.length - suffix.length));
+                                       .filter((string) => string.endsWith(suffix))
+                                       .map((string) => string.substr(0, string.length - suffix.length));
 
     result = lookUpLocations.find(ts.sys.fileExists) || '';
   }

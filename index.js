@@ -121,6 +121,20 @@ module.exports.register = function(extension, lookupStrategy) {
   }
 };
 
+module.exports.setDefaultResolver = function(name) {
+  const resolverIndex = defaultLookups.findIndex(lookup => lookup.name === name);
+
+  if (resolverIndex < 0) {
+    throw new Error(`Failed to find resolver by name "${name}"`);
+  }
+
+  if (resolverIndex === 0) {
+    return;
+  }
+
+  [defaultLookups[0], defaultLookups[resolverIndex]] = [defaultLookups[resolverIndex], defaultLookups[0]];
+};
+
 /**
  * Exposed for testing
  *

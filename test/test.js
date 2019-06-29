@@ -21,10 +21,8 @@ function setupCabinet() {
   freshCabinet.__set__('webpackResolve', require('enhanced-resolve'));
   freshCabinet.__set__('noTsCache', false);
 
-  // TypeScript is now the default lookup, but tests assume it's JS, so swap them
-  const defaultLookups = freshCabinet.__get__('defaultLookups');
-  [defaultLookups[0], defaultLookups[1]] = [defaultLookups[1], defaultLookups[0]];
-  freshCabinet.__set__('defaultLookups', defaultLookups);
+  // TypeScript is now the default lookup, but tests assume it's JS
+  freshCabinet.setDefaultResolver('JS');
   return freshCabinet;
 }
 

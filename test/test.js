@@ -20,6 +20,11 @@ function setupCabinet() {
   freshCabinet.__set__('amdLookup', require('module-lookup-amd'));
   freshCabinet.__set__('webpackResolve', require('enhanced-resolve'));
   freshCabinet.__set__('noTsCache', false);
+
+  // TypeScript is now the default lookup, but tests assume it's JS, so swap them
+  const defaultLookups = freshCabinet.__get__('defaultLookups');
+  [defaultLookups[0], defaultLookups[1]] = [defaultLookups[1], defaultLookups[0]];
+  freshCabinet.__set__('defaultLookups', defaultLookups);
   return freshCabinet;
 }
 
@@ -28,11 +33,11 @@ const mockAST = require('./ast');
 
 const assertPathsEqual = (path1, path2) => {
   if (path1 !== path2 && path1.replace(/\\/g, '/') === path2.replace(/\\/g, '/')) {
-    assert.equal(path1.replace(/\\/g, '/'), path2.replace(/\\/g, '/'));
+    assert.strictEqual(path1.replace(/\\/g, '/'), path2.replace(/\\/g, '/'));
     return;
   }
 
-  assert.equal(path1, path2);
+  assert.strictEqual(path1, path2);
 };
 
 describe('filing-cabinet', function() {
@@ -54,12 +59,11 @@ describe('filing-cabinet', function() {
         '.tsx',
         '.scss',
         '.sass',
-        '.styl',
-        '.less'
+        '.less',
+        '.styl'
       ];
 
-      assert.ok(cabinet.supportedFileExtensions.every(ext => expectedExtensions.includes(ext)) &&
-                expectedExtensions.every(ext => cabinet.supportedFileExtensions.includes(ext)));
+      assert.deepStrictEqual(cabinet.supportedFileExtensions, expectedExtensions);
     });
 
     it('uses a generic resolve for unsupported file extensions', function() {
@@ -102,7 +106,7 @@ describe('filing-cabinet', function() {
           ast
         });
 
-        assert.deepEqual(stub.args[0][0], ast);
+        assert.deepStrictEqual(stub.args[0][0], ast);
         revert();
       });
 
@@ -134,7 +138,7 @@ describe('filing-cabinet', function() {
 
         cabinet(options);
 
-        assert.deepEqual(stub.args[0][0], options.filename);
+        assert.deepStrictEqual(stub.args[0][0], options.filename);
         revert();
       });
     });
@@ -240,9 +244,9 @@ describe('filing-cabinet', function() {
 
         const args = stub.getCall(0).args[0];
 
-        assert.equal(args.partial, 'bar');
-        assert.equal(args.config, config);
-        assert.equal(args.configPath, 'config.js');
+        assert.strictEqual(args.partial, 'bar');
+        assert.strictEqual(args.config, config);
+        assert.strictEqual(args.configPath, 'config.js');
         assertPathsEqual(args.filename, 'js/amd/foo.js');
         assertPathsEqual(args.directory, 'js/amd/');
 
@@ -275,7 +279,7 @@ describe('filing-cabinet', function() {
           directory: 'js/commonjs/'
         });
 
-        assert.equal(result, '');
+        assert.strictEqual(result, '');
       });
 
       it('adds the directory to the require resolution paths', function() {
@@ -288,7 +292,7 @@ describe('filing-cabinet', function() {
         });
 
         assert.ok(require.main.paths.some(function(p) {
-          var expected = path.normalize(directory);
+          const expected = path.normalize(directory);
           return p.indexOf(expected) !== -1;
         }));
       });
@@ -442,7 +446,7 @@ describe('filing-cabinet', function() {
           directory
         });
 
-        assert.equal(
+        assert.strictEqual(
           result,
           path.join(path.resolve(directory), 'foo.ts')
         );
@@ -489,7 +493,7 @@ describe('filing-cabinet', function() {
             directory
           });
 
-          assert.equal(result, '');
+          assert.strictEqual(result, '');
         });
       });
 
@@ -514,7 +518,7 @@ describe('filing-cabinet', function() {
               tsConfig: parsedConfig
             });
 
-            assert.deepEqual(mockTs.resolveModuleName.args[0][2], {
+            assert.deepStrictEqual(mockTs.resolveModuleName.args[0][2], {
               module: ts.ModuleKind.CommonJS,
             });
 
@@ -533,7 +537,7 @@ describe('filing-cabinet', function() {
               }
             });
 
-            assert.equal(
+            assert.strictEqual(
               result,
               path.join(path.resolve(directory), '/subdir/index.tsx')
             );
@@ -548,7 +552,7 @@ describe('filing-cabinet', function() {
               directory
             });
 
-            assert.equal(
+            assert.strictEqual(
               result,
               path.join(path.resolve(directory), '/image.svg')
             );
@@ -572,7 +576,7 @@ describe('filing-cabinet', function() {
               }
             });
 
-            assert.equal(
+            assert.strictEqual(
               result,
               path.join(path.resolve(directory), '/subdir/subimage.svg')
             );
@@ -590,7 +594,7 @@ describe('filing-cabinet', function() {
               }
             });
 
-            assert.equal(
+            assert.strictEqual(
               result,
               path.join(path.resolve(directory), '../node_modules/image/npm-image.svg')
             );
@@ -614,7 +618,7 @@ describe('filing-cabinet', function() {
               tsConfig: path.join(path.resolve(directory), '.tsconfig')
             });
 
-            assert.deepEqual(mockTs.resolveModuleName.args[0][2], {
+            assert.deepStrictEqual(mockTs.resolveModuleName.args[0][2], {
               module: ts.ModuleKind.CommonJS,
             });
 
@@ -639,7 +643,7 @@ describe('filing-cabinet', function() {
             directory
           });
 
-          assert.deepEqual(mockTs.resolveModuleName.args[0][2], {
+          assert.deepStrictEqual(mockTs.resolveModuleName.args[0][2], {
             module: mockTs.ModuleKind.AMD
           });
 
@@ -820,7 +824,7 @@ describe('filing-cabinet', function() {
 
       const {supportedFileExtensions} = cabinet;
 
-      assert.equal(supportedFileExtensions.indexOf(newExt), supportedFileExtensions.lastIndexOf(newExt));
+      assert.strictEqual(supportedFileExtensions.indexOf(newExt), supportedFileExtensions.lastIndexOf(newExt));
     });
   });
 

@@ -1,9 +1,9 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const process = require('process');
 const debug = require('debug')('cabinet');
-const fs = require('fs');
 
 /*
  * most js resolver are lazy-loaded (only required when needed)
@@ -47,6 +47,7 @@ const defaultLookups = [
  * @param {String} [options.webpackConfig] Path to the webpack config
  * @param {Object} [options.ast] A preparsed AST for the file identified by filename.
  * @param {Object} [options.tsConfig] Path to a typescript config file
+ * @param {boolean} [options.noTypeDefinitions] Whether to return '.d.ts' files or '.js' files for a dependency
  */
 module.exports = function cabinet(options) {
   debug('options', options);
@@ -245,9 +246,7 @@ function getCompilerOptionsFromTsConfig(tsConfig) {
 
   debug('given typescript config: ', tsConfig);
 
-  let tsOptionsJson = {
-    compilerOptions: {}
-  };
+  let tsOptionsJson = {};
 
   let tsBasePath = process.cwd();
 
@@ -289,7 +288,7 @@ function getCompilerOptionsFromTsConfig(tsConfig) {
   return options;
 }
 
-function tsLookup({dependency, filename, directory, tsConfig}) {
+function tsLookup({dependency, filename, directory, tsConfig, noTypeDefinitions}) {
   debug('performing a typescript lookup');
 
   if (!ts) {
@@ -306,6 +305,9 @@ function tsLookup({dependency, filename, directory, tsConfig}) {
 
   if (namedModule.resolvedModule) {
     result = namedModule.resolvedModule.resolvedFileName;
+    if (namedModule.resolvedModule.extension === '.d.ts' && noTypeDefinitions) {
+      result = ts.resolveJSModule(dependency, path.dirname(filename), host) || result;
+    }
   } else {
     const suffix = '.d.ts';
     const lookUpLocations = namedModule.failedLookupLocations

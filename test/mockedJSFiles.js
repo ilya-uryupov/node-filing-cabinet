@@ -18,11 +18,16 @@ module.exports = {
       'bar.tsx': 'import React from "react"; export default () => { return (<div></div>); }',
       'check-nested.ts': 'import {Child} from "./subdir";',
       'image.svg': '<svg></svg>',
-      '.tsconfig': '{ "version": "1.0.0", "compilerOptions": { "module": "commonjs" } }',
+      '.tsconfig': '{ "version": "1.0.0", "compilerOptions": { "module": "commonjs" }\n // comments\n }',
+      '.tsconfigSpecificModuleResolution': '{ "version": "1.0.0", "compilerOptions": { "module": "commonjs", "moduleResolution": "node" }\n // comments\n }',
+      '.tsconfigExtending': '{ "extends": "./.tsconfigSpecificModuleResolution" }',
       'subdir': {
         'index.tsx': 'export Child = () => { return (<div></div>); );',
         'subimage.svg': '<svg></svg>'
-      }
+      },
+      'withOnlyTypeDef.d.ts': 'export default 1;',
+      'withTypeDef.d.ts': 'export default 1;',
+      'withTypeDef.js': 'module.exports = {default: 1};',
     },
     'amd': {
       'foo.js': 'define(["./bar"], function(bar){ return bar; });',

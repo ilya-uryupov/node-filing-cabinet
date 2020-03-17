@@ -20,7 +20,7 @@ function setupCabinet() {
   freshCabinet.__set__('ts', require('typescript'));
   freshCabinet.__set__('amdLookup', require('module-lookup-amd'));
   freshCabinet.__set__('webpackResolve', require('enhanced-resolve'));
-  freshCabinet.__set__('noTsCache', false);
+  freshCabinet.__set__('noTsCache', true);
 
   // TypeScript is now the default lookup, but tests assume it's JS
   freshCabinet.setDefaultResolver('JS');
@@ -685,6 +685,7 @@ describe('filing-cabinet', function() {
 
             assert.deepStrictEqual(mockTs.resolveModuleName.args[0][2], {
               module: ts.ModuleKind.CommonJS,
+              configFilePath: undefined
             });
 
             revert();

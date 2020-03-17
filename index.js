@@ -1,6 +1,5 @@
 'use strict';
 
-const fs = require('fs');
 const path = require('path');
 const process = require('process');
 const debug = require('debug')('cabinet');
@@ -246,46 +245,43 @@ function getCompilerOptionsFromTsConfig(tsConfig) {
 
   debug('given typescript config: ', tsConfig);
 
-  let tsOptionsJson = {};
-
-  let tsBasePath = process.cwd();
+  let compilerOptions;
 
   if (tsConfig) {
     if (typeof tsConfig === 'string') {
       debug('string tsconfig given, reading file');
 
       try {
-        const configText = fs.readFileSync(tsConfig, 'utf8');
-        tsOptionsJson = ts.parseConfigFileTextToJson(tsConfig, configText).config;
-        tsBasePath = path.dirname(tsConfig);
+        const tsParsedConfig = ts.readJsonConfigFile(tsConfig, ts.sys.readFile);
+        const tsOptionsJson = ts.parseJsonSourceFileConfigFileContent(tsParsedConfig, ts.sys, path.dirname(tsConfig));
 
-        debug('successfully parsed tsconfig');
+        debug('successfully parsed tsconfig', tsOptionsJson);
+        compilerOptions = tsOptionsJson.options;
       } catch (e) {
         debug('could not parse tsconfig', e);
         throw new Error('could not read tsconfig');
       }
     } else if (typeof tsConfig === 'object') {
-      tsOptionsJson = tsConfig;
+      compilerOptions = ts.convertCompilerOptionsFromJson(tsConfig.compilerOptions, process.cwd()).options;
     } else {
       throw new Error(`Unexpected type of tsconfig: ${typeof tsConfig}`);
     }
   } else {
     debug('no tsconfig given, defaulting');
+    compilerOptions = {};
   }
 
-  debug('processed typescript options: ', tsOptionsJson);
-  debug('processed typescript options type: ', typeof tsOptionsJson);
-
-  const {options} = ts.convertCompilerOptionsFromJson(tsOptionsJson.compilerOptions, tsBasePath);
+  debug('processed typescript options: ', compilerOptions);
+  debug('processed typescript options type: ', typeof compilerOptions);
 
   // Preserve for backcompat. Consider removing this as a breaking change.
-  if (!options.module) {
-    options.module = ts.ModuleKind.AMD;
+  if (!compilerOptions.module) {
+    compilerOptions.module = ts.ModuleKind.AMD;
   }
 
-  tsOptionsCache.set(tsConfig, options);
+  tsOptionsCache.set(tsConfig, compilerOptions);
 
-  return options;
+  return compilerOptions;
 }
 
 function tsLookup({dependency, filename, directory, tsConfig, noTypeDefinitions}) {
